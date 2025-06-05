@@ -1,2 +1,0 @@
-# Airindi
-Demo application
