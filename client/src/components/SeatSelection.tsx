@@ -1,60 +1,66 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { IoAirplane } from "react-icons/io5";
 
-interface SeatSelectionProps {
-  flight: {
-    id: number;
-    airline: string;
-    flightNumber: string;
-    departureTime: Date;
-    arrivalTime: Date;
-    price: number;
-    duration: string;
-    source: string;
-    destination: string;
-  };
-  onProceed: (selectedSeats: string[]) => void;
-  onBack: () => void;
-}
-
-// Create a grid of seats (e.g., 20 rows, 6 seats per row)
-const generateSeats = () => {
+// Ensure initialSeats is computed unconditionally and statically
+const generateInitialSeats = () => {
   const rows = 20;
   const seatsPerRow = 6;
   const seats: { id: string; status: "available" | "unavailable" | "selected" }[] = [];
-  
+
   // Business class (rows 1-2)
   for (let row = 1; row <= 2; row++) {
     for (let seat = 0; seat < 4; seat++) {
       const seatLetter = String.fromCharCode(65 + seat);
       const seatId = `${row}${seatLetter}`;
-      
-      // Randomly make some seats unavailable
       const status = Math.random() > 0.3 ? "available" : "unavailable";
       seats.push({ id: seatId, status });
     }
   }
-  
+
   // Economy class (rows 3-20)
   for (let row = 3; row <= rows; row++) {
     for (let seat = 0; seat < seatsPerRow; seat++) {
       const seatLetter = String.fromCharCode(65 + seat);
       const seatId = `${row}${seatLetter}`;
-      
-      // Randomly make some seats unavailable
       const status = Math.random() > 0.25 ? "available" : "unavailable";
       seats.push({ id: seatId, status });
     }
   }
-  
+
   return seats;
 };
 
-const SeatSelection: React.FC<SeatSelectionProps> = ({ flight, onProceed, onBack }) => {
-  const [seats, setSeats] = useState(generateSeats());
+const SeatSelection: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { flight } = location.state || {};
+  const [seats, setSeats] = useState(() => generateInitialSeats());
   const [selectedSeats, setSelectedSeats] = useState<string[]>([]);
+
+  useEffect(() => {
+    localStorage.setItem('pageName', 'Seat Selection Page');
+    if (flight) {
+      localStorage.setItem('selectedFlight', JSON.stringify(flight));
+    }
+  }, [flight]);
+
+  const storedFlight =  flight || (() => {
+    const savedFlight = JSON.parse(localStorage.getItem('selectedFlight') || '{}');
+    return {
+      ...savedFlight,
+      departureTime: savedFlight.departureTime ? new Date(savedFlight.departureTime) : null,
+      arrivalTime: savedFlight.arrivalTime ? new Date(savedFlight.arrivalTime) : null,
+    };
+  })();
+
+  if (!storedFlight) {
+    return <p>No flight selected. Please go back and select a flight.</p>;
+  }
+
+
   
   const isBusinessClass = (seatId: string) => {
     const row = parseInt(seatId.match(/\d+/)?.[0] || "0");
@@ -78,12 +84,13 @@ const SeatSelection: React.FC<SeatSelectionProps> = ({ flight, onProceed, onBack
   };
   
   const calculateTotalPrice = () => {
-    const basePrice = flight.price;
+    const basePrice = storedFlight.price;
+    const numericValue = Number(basePrice?.replace(/[^0-9.-]+/g, ""));
     const businessClassSeats = selectedSeats.filter(isBusinessClass).length;
     const economyClassSeats = selectedSeats.length - businessClassSeats;
     
     // Business class seats cost 3x the economy price
-    return (businessClassSeats * basePrice * 3) + (economyClassSeats * basePrice);
+    return (businessClassSeats * numericValue * 3) + (economyClassSeats * numericValue);
   };
   
   const renderSeat = (seat: { id: string; status: "available" | "unavailable" | "selected" }) => {
@@ -113,9 +120,9 @@ const SeatSelection: React.FC<SeatSelectionProps> = ({ flight, onProceed, onBack
             {isUnavailable ? (
               <p>Seat unavailable</p>
             ) : isBusiness ? (
-              <p>Business Class: ₹{(flight.price * 3).toLocaleString()}</p>
+              <p>Business Class: ₹{(storedFlight?.price * 3).toLocaleString()}</p>
             ) : (
-              <p>Economy Class: ₹{flight.price.toLocaleString()}</p>
+              <p>Economy Class: ₹{storedFlight?.price?.toLocaleString()}</p>
             )}
           </TooltipContent>
         </Tooltip>
@@ -172,13 +179,17 @@ const SeatSelection: React.FC<SeatSelectionProps> = ({ flight, onProceed, onBack
     });
   };
   
+  const handleSeatSelection = (selectedSeats: string[]) => {
+    navigate('/payment', { state: { flight: storedFlight, selectedSeats } });
+  };
+
   return (
     <div className="seat-selection-container p-6 bg-white rounded-lg shadow-lg max-w-5xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-neutral-800">Select Your Seats</h2>
         <div className="text-sm text-neutral-600">
-          <span className="font-medium">{flight.airline} {flight.flightNumber}</span> |
-          <span className="ml-2">{flight.source} to {flight.destination}</span>
+          <span className="font-medium">{storedFlight.airline} {storedFlight.flightNumber}</span> |
+          <span className="ml-2">{storedFlight.departure} to {storedFlight.arrival}</span>
         </div>
       </div>
       
@@ -187,11 +198,11 @@ const SeatSelection: React.FC<SeatSelectionProps> = ({ flight, onProceed, onBack
           <div>
             <div className="text-sm text-neutral-500">Departure</div>
             <div className="text-lg font-semibold">
-              {flight.departureTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {storedFlight?.departureTime?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
           <div className="flex flex-col items-center">
-            <div className="text-sm text-neutral-500">{flight.duration}</div>
+            <div className="text-sm text-neutral-500">{storedFlight.duration}</div>
             <div className="flex items-center">
               <div className="w-24 h-0.5 bg-neutral-300 relative">
                 <div className="absolute -top-1.5 right-0 w-3 h-3 rounded-full bg-[#138808]"></div>
@@ -202,7 +213,7 @@ const SeatSelection: React.FC<SeatSelectionProps> = ({ flight, onProceed, onBack
           <div>
             <div className="text-sm text-neutral-500">Arrival</div>
             <div className="text-lg font-semibold">
-              {flight.arrivalTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {storedFlight?.arrivalTime?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
           </div>
         </div>
@@ -270,14 +281,14 @@ const SeatSelection: React.FC<SeatSelectionProps> = ({ flight, onProceed, onBack
       <div className="sticky bottom-0 pt-4 pb-4 bg-white flex justify-between">
         <Button 
           variant="outline" 
-          onClick={onBack}
+          onClick={() => navigate(-1)}
           className="border-neutral-300"
         >
           Back to Flights
         </Button>
         
         <Button 
-          onClick={() => onProceed(selectedSeats)} 
+          onClick={() => handleSeatSelection(selectedSeats)} 
           disabled={selectedSeats.length === 0}
           className="bg-gradient-to-r from-[#FF9933] to-[#FFB366] hover:from-[#F08620] hover:to-[#FF9933]"
           size="lg"
